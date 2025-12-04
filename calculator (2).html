@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Full Calculator — HTML + JavaScript</title>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8;
+    --btn:#111827; --btn-hover:#1f2937; --danger:#ef4444;
+  }
+  *{box-sizing:border-box; font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(180deg,#071025 0%, #07162a 100%); color:#e6eef6;
+    padding:24px;
+  }
+  .calculator{
+    width:360px; max-width:96vw; background:linear-gradient(180deg,var(--card), #071827);
+    border-radius:14px; padding:18px; box-shadow:0 10px 30px rgba(2,6,23,0.6);
+  }
+  .display {
+    background:rgba(255,255,255,0.03); border-radius:10px; padding:12px; margin-bottom:12px;
+    min-height:64px; display:flex; flex-direction:column; justify-content:center;
+  }
+  .top-line{ display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .expression { color:var(--muted); font-size:14px; overflow-x:auto; white-space:nowrap; padding-right:6px; }
+  .result { font-size:24px; font-weight:600; margin-top:6px; overflow-x:auto; padding-right:6px; }
+  .controls{ display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .btn {
+    flex:1 1 20%; min-width:44px; padding:12px; margin:2px; border-radius:8px; text-align:center;
+    background:var(--btn); cursor:pointer; user-select:none; border:1px solid rgba(255,255,255,0.03);
+    transition:transform .06s ease, background .12s;
+  }
+  .btn:active{ transform:translateY(1px); }
+  .btn:hover{ background:var(--btn-hover); }
+  .btn.op{ background:linear-gradient(180deg,#07202b,#04202b); color:var(--accent); font-weight:600; }
+  .btn.secondary{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.03); }
+  .btn.wide{ flex: 1 1 44%; }
+  .grid{ display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
+  .history{ margin-top:12px; max-height:120px; overflow:auto; background:rgba(255,255,255,0.02); border-radius:8px; padding:8px; font-size:13px; color:var(--muted); }
+  .history div{ padding:6px 8px; border-radius:6px; margin-bottom:6px; background:rgba(255,255,255,0.01); cursor:pointer; }
+  .history div:hover{ background:rgba(255,255,255,0.02); color:#e6eef6; }
+  .small{ font-size:12px; padding:8px; }
+  footer{ margin-top:10px; font-size:12px; color:var(--muted); text-align:center; }
+  @media (max-width:420px){
+    .calculator{ width:320px; }
+    .result{ font-size:20px; }
+  }
+</style>
+</head>
+<body>
+  <div class="calculator" role="application" aria-label="Full Calculator">
+    <div class="display" id="display">
+      <div class="top-line">
+        <div class="expression" id="expression" aria-live="polite"></div>
+        <div class="small" id="memIndicator" title="Memory value">M: 0</div>
+      </div>
+      <div class="result" id="result" aria-live="polite">0</div>
+    </div>
+
+    <div class="controls">
+      <!-- Memory and clear row -->
+      <div class="btn secondary" data-action="MC">MC</div>
+      <div class="btn secondary" data-action="MR">MR</div>
+      <div class="btn secondary" data-action="Mplus">M+</div>
+      <div class="btn secondary" data-action="Mminus">M-</div>
+    </div>
+
+    <div class="grid" id="buttons">
+      <!-- scientific row -->
+      <div class="btn op" data-value="(">(</div>
+      <div class="btn op" data-value=")">)</div>
+      <div class="btn op" data-action="back">⌫</div>
+      <div class="btn op" data-action="clear">C</div>
+
+      <div class="btn" data-action="sqrt">√</div>
+      <div class="btn" data-action="pow">xʸ</div>
+      <div class="btn" data-action="percent">%</div>
+      <div class="btn op" data-value="/">÷</div>
+
+      <div class="btn" data-value="7">7</div>
+      <div class="btn" data-value="8">8</div>
+      <div class="btn" data-value="9">9</div>
+      <div class="btn op" data-value="*">×</div>
+
+      <div class="btn" data-value="4">4</div>
+      <div class="btn" data-value="5">5</div>
+      <div class="btn" data-value="6">6</div>
+      <div class="btn op" data-value="-">−</div>
+
+      <div class="btn" data-value="1">1</div>
+      <div class="btn" data-value="2">2</div>
+      <div class="btn" data-value="3">3</div>
+      <div class="btn op" data-value="+">+</div>
+
+      <div class="btn" data-action="plusminus">+/-</div>
+      <div class="btn" data-value="0">0</div>
+      <div class="btn" data-value=".">.</div>
+      <div class="btn op" data-action="equals">=</div>
+    </div>
+
+    <div class="history" id="history" title="Click entry to reuse"></div>
+
+    <footer>Tip: You can type on your keyboard. Enter = calculate, Esc = clear, Backspace = delete.</footer>
+  </div>
+
+<script>
+(function(){
+  const exprEl = document.getElementById('expression');
+  const resEl  = document.getElementById('result');
+  const memEl  = document.getElementById('memIndicator');
+  const historyEl = document.getElementById('history');
+
+  let expression = '';        // display expression (user-facing: contains × ÷ etc)
+  let memory = 0;             // memory value
+  let history = [];           // simple history array
+
+  // helper to render
+  function render(){
+    exprEl.textContent = expression || '';
+    resEl.textContent = expression ? safeEvalPreview(expression) : '0';
+    memEl.textContent = 'M: ' + (memory || 0);
+    renderHistory();
+  }
+
+  // Converts display expression to JS-evaluable expression
+  function toJSExpr(expr){
+    if(!expr) return '';
+    return expr
+      .replace(/×/g,'*')
+      .replace(/÷/g,'/')
+      .replace(/−/g,'-')
+      .replace(/xʸ/g,'**')
+      .replace(/√\(/g,'Math.sqrt(')
+      .replace(/√/g,'Math.sqrt(') // handle sqrt symbol
+      ;
+  }
+
+  // Safe-ish evaluation with Function (try/catch). Prevents accidental name resolution by disallowing letters.
+  function safeEval(jsExpr){
+    // Basic sanitization: allow digits, operators, parentheses, decimal, Math, and whitespace.
+    // But we will also allow '**' and percent handling implemented separately.
+    // We'll handle percent and sqrt before this.
+    try{
+      // disallow stray letters except "Math"
+      if(/[A-Za-z]/.test(jsExpr) && !/Math/.test(jsExpr)){
+        throw new Error('Invalid input');
+      }
+      // Evaluate
+      return Function('"use strict"; return (' + jsExpr + ')')();
+    }catch(e){
+      throw e;
+    }
+  }
+
+  // Evaluate for display (preview) — returns last value or 0 on error
+  function safeEvalPreview(displayExpr){
+    if(!displayExpr) return '0';
+    try {
+      const jsExpr = preprocessPercentAndSqrt(displayExpr);
+      const v = safeEval(toJSExpr(jsExpr));
+      if(v === undefined || Number.isNaN(v)) return 'Error';
+      // trim long decimals
+      return formatNumber(v);
+    } catch(e){
+      return '...';
+    }
+  }
+
+  // Final evaluate when pressing equals — stores history
+  function evaluateExpression(){
+    if(!expression) return;
+    try{
+      const jsExpr = preprocessPercentAndSqrt(expression);
+      const result = safeEval(toJSExpr(jsExpr));
+      if(result === undefined || Number.isNaN(result)) throw new Error('Invalid result');
+      addHistory(expression + ' = ' + formatNumber(result));
+      expression = String(formatNumber(result));
+      render();
+    }catch(e){
+      resEl.textContent = 'Error';
+    }
+  }
+
+  // Format numbers: shorten long floats
+  function formatNumber(n){
+    if(!isFinite(n)) return String(n);
+    // if nearly integer
+    if(Math.abs(n - Math.round(n)) < 1e-12) return String(Math.round(n));
+    // else show up to 12 significant digits
+    return Number(n.toPrecision(12)).toString();
+  }
+
+  // Preprocess percent and sqrt tokens to JS friendly form.
+  // For percent: convert "50%" to "(50/100)" or "200+10%" -> "200 + (200*10/100)" (more complicated)
+  // We'll implement a simple percent that treats directly adjacent number% as number/100.
+  function preprocessPercentAndSqrt(displayExpr){
+    let s = displayExpr;
+    // convert percent: replace number% -> (number/100)
+    s = s.replace(/(\d+(\.\d+)?)%/g, '($1/100)');
+    // convert sqrt symbol (if user used √number) -> Math.sqrt(number)
+    s = s.replace(/√\s*\(/g, 'Math.sqrt(');
+    s = s.replace(/√\s*(\d+(\.\d+)?)/g, 'Math.sqrt($1)');
+    // change xʸ visual to ** for power operations
+    s = s.replace(/xʸ/g, '**');
+    // replace × ÷ − with standard operators (still keep toJSExpr)
+    s = s.replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-');
+    return s;
+  }
+
+  function addHistory(text){
+    history.unshift({text, time: Date.now()});
+    if(history.length > 20) history.pop();
+  }
+
+  function renderHistory(){
+    historyEl.innerHTML = '';
+    history.forEach(item => {
+      const d = document.createElement('div');
+      d.textContent = item.text;
+      d.title = 'Click to reuse';
+      d.addEventListener('click', ()=> {
+        // set expression to the left side (before '=')
+        const left = item.text.split('=')[0].trim();
+        expression = left;
+        render();
+      });
+      historyEl.appendChild(d);
+    });
+  }
+
+  // Button clicks
+  document.getElementById('buttons').addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('.btn');
+    if(!btn) return;
+    const v = btn.dataset.value;
+    const a = btn.dataset.action;
+    if(v !== undefined) {
+      insertValue(v);
+    } else if(a) {
+      handleAction(a);
+    }
+    render();
+  });
+
+  // Controls row (memory buttons)
+  document.querySelector('.controls').addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('.btn');
+    if(!btn) return;
+    const a = btn.dataset.action;
+    if(a) handleAction(a);
+    render();
+  });
+
+  function insertValue(val){
+    // map display operators nicely
+    if(val === '*') val = '×';
+    if(val === '/') val = '÷';
+    if(val === '-') val = '−';
+    // if last char is result (i.e., pure number shown) and user inserts number, append; but if it's a number and last action was equals, they may want to continue — we treat expression as string always
+    expression += val;
+  }
+
+  function handleAction(action){
+    switch(action){
+      case 'clear':
+        expression = '';
+        resEl.textContent = '0';
+        break;
+      case 'back':
+        expression = expression.slice(0,-1);
+        break;
+      case 'equals':
+        evaluateExpression();
+        break;
+      case 'sqrt':
+        // wrap current expression or insert sqrt(
+        if(expression) expression = '√(' + expression + ')';
+        else expression = '√(';
+        break;
+      case 'pow':
+        // insert xʸ symbol which our parser maps to **
+        expression += 'xʸ';
+        break;
+      case 'percent':
+        expression += '%';
+        break;
+      case 'plusminus':
+        // toggle sign of last number: find last number and prefix with ( -1 * number ) or remove
+        toggleLastNumberSign();
+        break;
+      // memory functions
+      case 'MC':
+        memory = 0;
+        break;
+      case 'MR':
+        expression += String(memory);
+        break;
+      case 'Mplus':
+        try {
+          const v = Number(safeEval(toJSExpr(preprocessPercentAndSqrt(expression || '0'))));
+          memory += v || 0;
+          addHistory('M+ ' + formatNumber(v));
+        } catch(e){
+          // ignore
+        }
+        break;
+      case 'Mminus':
+        try {
+          const v = Number(safeEval(toJSExpr(preprocessPercentAndSqrt(expression || '0'))));
+          memory -= v || 0;
+          addHistory('M- ' + formatNumber(v));
+        } catch(e){}
+        break;
+      default:
+        break;
+    }
+  }
+
+  function toggleLastNumberSign(){
+    // find last number token in expression and toggle sign
+    const re = /(\d+(\.\d+)?|\))$/;
+    const match = expression.match(re);
+    if(!match) {
+      // if expression empty, insert -
+      expression = expression ? expression : '-';
+      return;
+    }
+    // If last chunk is ')', we can't easily invert, so just prefix with (-1* ... )
+    if(match[0] === ')'){
+      // wrap whole expression
+      expression = '(-1*' + expression + ')';
+      return;
+    }
+    // else operate on number at end
+    const numRe = /(-?\d+(\.\d+)?)$/;
+    const m2 = expression.match(numRe);
+    if(!m2) {
+      expression = '-' + expression;
+      return;
+    }
+    const num = m2[1];
+    // if already negative (has preceding − sign or -), remove it
+    if(num.startsWith('-')){
+      expression = expression.slice(0, expression.length - num.length) + num.slice(1);
+    } else {
+      expression = expression.slice(0, expression.length - num.length) + '(-' + num + ')';
+    }
+  }
+
+  // Keyboard support
+  window.addEventListener('keydown', (e) => {
+    if(e.key >= '0' && e.key <= '9') { insertValue(e.key); render(); return; }
+    if(e.key === '.') { insertValue('.'); render(); return; }
+    if(e.key === '+' || e.key === '-' || e.key === '/' || e.key === '*') {
+      // show friendly symbols
+      const map = {'*':'×','/':'÷','-':'−','+':'+'};
+      insertValue(map[e.key] || e.key);
+      render(); return;
+    }
+    if(e.key === 'Enter') { e.preventDefault(); handleAction('equals'); render(); return; }
+    if(e.key === 'Escape') { handleAction('clear'); render(); return; }
+    if(e.key === 'Backspace') { handleAction('back'); render(); return; }
+    if(e.key === '(' || e.key === ')') { insertValue(e.key); render(); return; }
+    // allow percent key
+    if(e.key === '%'){ insertValue('%'); render(); return; }
+  });
+
+  // init
+  render();
+
+  // Expose some utilities to console for debugging (optional)
+  window._calc = {
+    getExpression: ()=> expression,
+    setExpression: (s)=> { expression = s; render(); },
+    evaluate: evaluateExpression,
+    memory: ()=> memory
+  };
+
+})();
+</script>
+</body>
+</html>
+
+
